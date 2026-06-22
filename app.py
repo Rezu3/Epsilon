@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from functools import wraps
 import urllib.parse as urlparse
-#import psycopg2
+import psycopg2
 from psycopg2.extras import DictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
