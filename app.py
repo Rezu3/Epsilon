@@ -1,10 +1,12 @@
 import os
-import sqlite3
 from datetime import datetime
 from functools import wraps
+import urllib.parse as urlparse
+import psycopg2
+from psycopg2.extras import DictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -13,83 +15,94 @@ from reportlab.lib import colors
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_session_key_for_tuition_system'
-app.config['DATABASE'] = 'tuition_system.db'
+
+# Render PostgreSQL Connection URL
+DATABASE_URL = "postgresql://rejaul:d3Da5EK6OEhKFKsYaBMQQKYt8CoGw2gJ@dpg-d8skrt3sq97s73c3796g-a/tuition_management"
+
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB max upload
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# --- Database Helper Functions ---
+# --- Database Helper Functions (PostgreSQL) ---
 def get_db():
-    conn = sqlite3.connect(app.config['DATABASE'])
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    # URL পার্স করে SSL মোড সহ কানেক্ট করা (Render-এর জন্য আবশ্যক)
+    url = urlparse.urlparse(DATABASE_URL)
+    conn = psycopg2.connect(
+        dbname=url.path[1:],
+        user=url.username,
+        password=url.password,
+        host=url.hostname,
+        port=url.port,
+        sslmode='require'
+    )
     return conn
 
 def init_db():
     with get_db() as conn:
-        # Admins Table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS admins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
-            )
-        ''')
-        # Settings Table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tuition_name TEXT NOT NULL,
-                tuition_logo TEXT,
-                theme_mode TEXT DEFAULT 'dark'
-            )
-        ''')
-        # Students Table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS students (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                mobile TEXT NOT NULL,
-                father_name TEXT,
-                mother_name TEXT,
-                class TEXT,
-                school_name TEXT,
-                address TEXT,
-                dob TEXT,
-                admission_date TEXT,
-                photo TEXT
-            )
-        ''')
-        # Results Table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id INTEGER NOT NULL,
-                exam_name TEXT NOT NULL,
-                total_marks REAL NOT NULL,
-                obtained_marks REAL NOT NULL,
-                percentage REAL NOT NULL,
-                grade TEXT NOT NULL,
-                exam_date TEXT NOT NULL,
-                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Seed Default Admin if not exists
-        admin_exists = conn.execute('SELECT * FROM admins WHERE username = ?', ('admin',)).fetchone()
-        if not admin_exists:
-            hashed_pw = generate_password_hash('admin123')
-            conn.execute('INSERT INTO admins (username, password) VALUES (?, ?)', ('admin', hashed_pw))
+        with conn.cursor() as cur:
+            # Admins Table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS admins (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL
+                )
+            ''')
+            # Settings Table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS settings (
+                    id SERIAL PRIMARY KEY,
+                    tuition_name TEXT NOT NULL,
+                    tuition_logo TEXT,
+                    theme_mode TEXT DEFAULT 'dark'
+                )
+            ''')
+            # Students Table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS students (
+                    id SERIAL PRIMARY KEY,
+                    student_id TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    mobile TEXT NOT NULL,
+                    father_name TEXT,
+                    mother_name TEXT,
+                    class TEXT,
+                    school_name TEXT,
+                    address TEXT,
+                    dob TEXT,
+                    admission_date TEXT,
+                    photo TEXT
+                )
+            ''')
+            # Results Table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS results (
+                    id SERIAL PRIMARY KEY,
+                    student_id INTEGER NOT NULL,
+                    exam_name TEXT NOT NULL,
+                    total_marks REAL NOT NULL,
+                    obtained_marks REAL NOT NULL,
+                    percentage REAL NOT NULL,
+                    grade TEXT NOT NULL,
+                    exam_date TEXT NOT NULL,
+                    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+                )
+            ''')
             
-        # Seed Default Settings if not exists
-        settings_exists = conn.execute('SELECT * FROM settings LIMIT 1').fetchone()
-        if not settings_exists:
-            conn.execute('INSERT INTO settings (tuition_name, tuition_logo) VALUES (?, ?)', ('𝔼𝕡𝕤𝕚𝕝𝕠𝕟『𝜀』', 'default_logo.png'))
-        
-        conn.commit()
+            # Seed Default Admin if not exists
+            cur.execute('SELECT * FROM admins WHERE username = %s', ('rejaul',))
+            if not cur.fetchone():
+                hashed_pw = generate_password_hash('admin123')
+                cur.execute('INSERT INTO admins (username, password) VALUES (%s, %s)', ('rejaul', hashed_pw))
+                
+            # Seed Default Settings if not exists
+            cur.execute('SELECT * FROM settings LIMIT 1')
+            if not cur.fetchone():
+                cur.execute('INSERT INTO settings (tuition_name, tuition_logo) VALUES (%s, %s)', ('𝔼𝕡𝕤𝕚𝕝𝕠𝕟『𝜀』', 'default_logo.png'))
+            
+            conn.commit()
 
 # Initialize DB on Startup
 init_db()
@@ -98,7 +111,9 @@ init_db()
 @app.context_processor
 def inject_settings():
     conn = get_db()
-    settings_row = conn.execute('SELECT * FROM settings LIMIT 1').fetchone()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT * FROM settings LIMIT 1')
+        settings_row = cur.fetchone()
     conn.close()
     return dict(system_settings=settings_row)
 
@@ -141,7 +156,9 @@ def login():
         password = request.form.get('password').strip()
         
         conn = get_db()
-        admin = conn.execute('SELECT * FROM admins WHERE username = ?', (username,)).fetchone()
+        with conn.cursor(cursor_factory=DictCursor) as cur:
+            cur.execute('SELECT * FROM admins WHERE username = %s', (username,))
+            admin = cur.fetchone()
         conn.close()
         
         if admin and check_password_hash(admin['password'], password):
@@ -166,21 +183,28 @@ def logout():
 @login_required
 def dashboard():
     conn = get_db()
-    total_students = conn.execute('SELECT COUNT(*) FROM students').fetchone()[0]
-    total_classes = conn.execute('SELECT COUNT(DISTINCT class) FROM students WHERE class IS NOT NULL AND class != ""').fetchone()[0]
-    total_results = conn.execute('SELECT COUNT(*) FROM results').fetchone()[0]
-    
-    recent_students = conn.execute('SELECT * FROM students ORDER BY id DESC LIMIT 5').fetchall()
-    
-    # Complex Query for Top Rankers across classes (based on average percentage)
-    top_rankers = conn.execute('''
-        SELECT s.name, s.class, s.mobile, ROUND(AVG(r.percentage), 2) as avg_pct 
-        FROM students s 
-        JOIN results r ON s.id = r.student_id 
-        GROUP BY s.id 
-        ORDER BY avg_pct DESC LIMIT 5
-    ''').fetchall()
-    
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT COUNT(*) FROM students')
+        total_students = cur.fetchone()[0]
+        
+        cur.execute('SELECT COUNT(DISTINCT class) FROM students WHERE class IS NOT NULL AND class != %s', ('',))
+        total_classes = cur.fetchone()[0]
+        
+        cur.execute('SELECT COUNT(*) FROM results')
+        total_results = cur.fetchone()[0]
+        
+        cur.execute('SELECT * FROM students ORDER BY id DESC LIMIT 5')
+        recent_students = cur.fetchall()
+        
+        cur.execute('''
+            SELECT s.name, s.class, s.mobile, ROUND(AVG(r.percentage)::numeric, 2) as avg_pct 
+            FROM students s 
+            JOIN results r ON s.id = r.student_id 
+            GROUP BY s.id, s.name, s.class, s.mobile 
+            ORDER BY avg_pct DESC LIMIT 5
+        ''')
+        top_rankers = cur.fetchall()
+        
     conn.close()
     return render_template('dashboard.html', 
                            total_students=total_students, 
@@ -194,7 +218,6 @@ def dashboard():
 def students():
     conn = get_db()
     
-    # Filters and Search
     search_query = request.args.get('search', '').strip()
     class_filter = request.args.get('class_filter', '').strip()
     page = request.args.get('page', 1, type=int)
@@ -205,25 +228,28 @@ def students():
     params = []
     
     if search_query:
-        query += " AND (name LIKE ? OR mobile LIKE ? OR student_id LIKE ?)"
+        query += " AND (name LIKE %s OR mobile LIKE %s OR student_id LIKE %s)"
         params.extend([f'%{search_query}%', f'%{search_query}%', f'%{search_query}%'])
         
     if class_filter:
-        query += " AND class = ?"
+        query += " AND class = %s"
         params.append(class_filter)
         
-    # Get total count for pagination
-    count_query = query.replace("SELECT *", "SELECT COUNT(*)", 1)
-    total_records = conn.execute(count_query, params).fetchone()[0]
-    total_pages = (total_records + per_page - 1) // per_page
-    
-    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
-    params.extend([per_page, offset])
-    
-    student_list = conn.execute(query, params).fetchall()
-    
-    # Get all distinct classes for the filter dropdown
-    classes = conn.execute('SELECT DISTINCT class FROM students WHERE class IS NOT NULL AND class != "" ORDER BY class').fetchall()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        count_query = query.replace("SELECT *", "SELECT COUNT(*)", 1)
+        cur.execute(count_query, params)
+        total_records = cur.fetchone()[0]
+        total_pages = (total_records + per_page - 1) // per_page
+        
+        query += " ORDER BY id DESC LIMIT %s OFFSET %s"
+        params.extend([per_page, offset])
+        
+        cur.execute(query, params)
+        student_list = cur.fetchall()
+        
+        cur.execute('SELECT DISTINCT class FROM students WHERE class IS NOT NULL AND class != %s ORDER BY class', ('',))
+        classes = cur.fetchall()
+        
     conn.close()
     
     return render_template('students.html', 
@@ -252,7 +278,6 @@ def add_student():
             flash('Student Name and Mobile Number are mandatory fields.', 'danger')
             return redirect(url_for('students'))
             
-        # Handle Photo Upload
         photo_file = request.files.get('photo')
         filename = None
         if photo_file and photo_file.filename != '':
@@ -261,16 +286,17 @@ def add_student():
             
         conn = get_db()
         try:
-            # Auto-generate unique Student ID
-            current_year = datetime.now().strftime('%Y')
-            last_id_row = conn.execute('SELECT id FROM students ORDER BY id DESC LIMIT 1').fetchone()
-            next_serial = (last_id_row['id'] + 1) if last_id_row else 1
-            student_id = f"TMS-{current_year}-{next_serial:04d}"
-            
-            conn.execute('''
-                INSERT INTO students (student_id, name, mobile, father_name, mother_name, class, school_name, address, dob, admission_date, photo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (student_id, name, mobile, father_name, mother_name, student_class, school_name, address, dob, admission_date, filename))
+            with conn.cursor(cursor_factory=DictCursor) as cur:
+                current_year = datetime.now().strftime('%Y')
+                cur.execute('SELECT id FROM students ORDER BY id DESC LIMIT 1')
+                last_id_row = cur.fetchone()
+                next_serial = (last_id_row['id'] + 1) if last_id_row else 1
+                student_id = f"TMS-{current_year}-{next_serial:04d}"
+                
+                cur.execute('''
+                    INSERT INTO students (student_id, name, mobile, father_name, mother_name, class, school_name, address, dob, admission_date, photo)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (student_id, name, mobile, father_name, mother_name, student_class, school_name, address, dob, admission_date, filename))
             conn.commit()
             flash('Student added successfully!', 'success')
         except Exception as e:
@@ -284,7 +310,9 @@ def add_student():
 @login_required
 def edit_student(id):
     conn = get_db()
-    student = conn.execute('SELECT * FROM students WHERE id = ?', (id,)).fetchone()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT * FROM students WHERE id = %s', (id,))
+        student = cur.fetchone()
     
     if not student:
         conn.close()
@@ -312,10 +340,11 @@ def edit_student(id):
             filename = secure_filename(f"{int(datetime.now().timestamp())}_{photo_file.filename}")
             photo_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             
-        conn.execute('''
-            UPDATE students SET name=?, mobile=?, father_name=?, mother_name=?, class=?, school_name=?, address=?, dob=?, admission_date=?, photo=?
-            WHERE id=?
-        ''', (name, mobile, father_name, mother_name, student_class, school_name, address, dob, admission_date, filename, id))
+        with conn.cursor() as cur:
+            cur.execute('''
+                UPDATE students SET name=%s, mobile=%s, father_name=%s, mother_name=%s, class=%s, school_name=%s, address=%s, dob=%s, admission_date=%s, photo=%s
+                WHERE id=%s
+            ''', (name, mobile, father_name, mother_name, student_class, school_name, address, dob, admission_date, filename, id))
         conn.commit()
         conn.close()
         flash('Student profile updated successfully.', 'success')
@@ -328,7 +357,8 @@ def edit_student(id):
 @login_required
 def delete_student(id):
     conn = get_db()
-    conn.execute('DELETE FROM students WHERE id = ?', (id,))
+    with conn.cursor() as cur:
+        cur.execute('DELETE FROM students WHERE id = %s', (id,))
     conn.commit()
     conn.close()
     flash('Student record deleted successfully.', 'warning')
@@ -338,13 +368,16 @@ def delete_student(id):
 @login_required
 def student_profile(id):
     conn = get_db()
-    student = conn.execute('SELECT * FROM students WHERE id = ?', (id,)).fetchone()
-    if not student:
-        conn.close()
-        flash('Student not found.', 'danger')
-        return redirect(url_for('students'))
-        
-    results = conn.execute('SELECT * FROM results WHERE student_id = ? ORDER BY id DESC', (id,)).fetchall()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT * FROM students WHERE id = %s', (id,))
+        student = cur.fetchone()
+        if not student:
+            conn.close()
+            flash('Student not found.', 'danger')
+            return redirect(url_for('students'))
+            
+        cur.execute('SELECT * FROM results WHERE student_id = %s ORDER BY id DESC', (id,))
+        results = cur.fetchall()
     conn.close()
     return render_template('student_profile.html', student=student, results=results, edit_mode=False)
 
@@ -365,15 +398,15 @@ def results():
             
         percentage, grade = calculate_grade(obtained_marks, total_marks)
         
-        conn.execute('''
-            INSERT INTO results (student_id, exam_name, total_marks, obtained_marks, percentage, grade, exam_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (student_id, exam_name, total_marks, obtained_marks, percentage, grade, exam_date))
+        with conn.cursor() as cur:
+            cur.execute('''
+                INSERT INTO results (student_id, exam_name, total_marks, obtained_marks, percentage, grade, exam_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (student_id, exam_name, total_marks, obtained_marks, percentage, grade, exam_date))
         conn.commit()
         flash('Result added successfully!', 'success')
         return redirect(url_for('results'))
         
-    # GET Request Logic
     search_query = request.args.get('search', '').strip()
     query = '''
         SELECT r.*, s.name as student_name, s.student_id as uid, s.class 
@@ -382,12 +415,16 @@ def results():
     '''
     params = []
     if search_query:
-        query += " WHERE s.name LIKE ? OR r.exam_name LIKE ? OR s.student_id LIKE ?"
+        query += " WHERE s.name LIKE %s OR r.exam_name LIKE %s OR s.student_id LIKE %s"
         params.extend([f'%{search_query}%', f'%{search_query}%', f'%{search_query}%'])
         
     query += " ORDER BY r.id DESC"
-    result_list = conn.execute(query, params).fetchall()
-    all_students = conn.execute('SELECT id, name, student_id FROM students ORDER BY name').fetchall()
+    
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute(query, params)
+        result_list = cur.fetchall()
+        cur.execute('SELECT id, name, student_id FROM students ORDER BY name')
+        all_students = cur.fetchall()
     conn.close()
     
     return render_template('results.html', results=result_list, students=all_students, search_query=search_query)
@@ -396,7 +433,8 @@ def results():
 @login_required
 def delete_result(id):
     conn = get_db()
-    conn.execute('DELETE FROM results WHERE id = ?', (id,))
+    with conn.cursor() as cur:
+        cur.execute('DELETE FROM results WHERE id = %s', (id,))
     conn.commit()
     conn.close()
     flash('Result entry deleted.', 'warning')
@@ -406,24 +444,26 @@ def delete_result(id):
 @login_required
 def ranking():
     conn = get_db()
-    classes = conn.execute('SELECT DISTINCT class FROM students WHERE class IS NOT NULL AND class != "" ORDER BY class').fetchall()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT DISTINCT class FROM students WHERE class IS NOT NULL AND class != %s ORDER BY class', ('',))
+        classes = cur.fetchall()
     
     selected_class = request.args.get('class_select', '').strip()
     ranked_students = []
     
     if selected_class:
-        # Get Average Percentage for each student in the selected class
         query = '''
-            SELECT s.id, s.name, s.mobile, ROUND(AVG(r.percentage), 2) as avg_percentage
+            SELECT s.id, s.name, s.mobile, ROUND(AVG(r.percentage)::numeric, 2) as avg_percentage
             FROM students s
             JOIN results r ON s.id = r.student_id
-            WHERE s.class = ?
-            GROUP BY s.id
+            WHERE s.class = %s
+            GROUP BY s.id, s.name, s.mobile
             ORDER BY avg_percentage DESC
         '''
-        raw_rankings = conn.execute(query, (selected_class,)).fetchall()
+        with conn.cursor(cursor_factory=DictCursor) as cur:
+            cur.execute(query, (selected_class,))
+            raw_rankings = cur.fetchall()
         
-        # Dense Ranking Algorithm Logic (Same percentage gets same rank)
         current_rank = 0
         prev_pct = None
         count = 0
@@ -434,7 +474,6 @@ def ranking():
                 current_rank = count
                 prev_pct = row['avg_percentage']
             
-            # Calculate overall grade based on average percentage
             _, grade = calculate_grade(row['avg_percentage'], 100)
             
             ranked_students.append({
@@ -457,20 +496,22 @@ def export_ranking_pdf():
         return redirect(url_for('ranking'))
         
     conn = get_db()
-    system_set = conn.execute('SELECT * FROM settings LIMIT 1').fetchone()
-    
-    query = '''
-        SELECT s.name, s.mobile, ROUND(AVG(r.percentage), 2) as avg_percentage
-        FROM students s
-        JOIN results r ON s.id = r.student_id
-        WHERE s.class = ?
-        GROUP BY s.id
-        ORDER BY avg_percentage DESC
-    '''
-    raw_rankings = conn.execute(query, (selected_class,)).fetchall()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT * FROM settings LIMIT 1')
+        system_set = cur.fetchone()
+        
+        query = '''
+            SELECT s.name, s.mobile, ROUND(AVG(r.percentage)::numeric, 2) as avg_percentage
+            FROM students s
+            JOIN results r ON s.id = r.student_id
+            WHERE s.class = %s
+            GROUP BY s.id, s.name, s.mobile
+            ORDER BY avg_percentage DESC
+        '''
+        cur.execute(query, (selected_class,))
+        raw_rankings = cur.fetchall()
     conn.close()
     
-    # Process Ranking
     ranked_students = []
     current_rank = 0
     prev_pct = None
@@ -483,7 +524,6 @@ def export_ranking_pdf():
         _, grade = calculate_grade(row['avg_percentage'], 100)
         ranked_students.append([current_rank, row['name'], row['mobile'], f"{row['avg_percentage']}%", grade])
 
-    # PDF Building via ReportLab
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     story = []
@@ -492,14 +532,12 @@ def export_ranking_pdf():
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=24, leading=28, textColor=colors.HexColor('#0f172a'), alignment=1)
     subtitle_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontSize=12, leading=16, textColor=colors.HexColor('#64748b'), alignment=1)
     
-    # Header Elements
     story.append(Paragraph(f"<b>{system_set['tuition_name']}</b>", title_style))
     story.append(Spacer(1, 6))
     story.append(Paragraph(f"Merit List / Ranking Report — Class: {selected_class}", subtitle_style))
     story.append(Paragraph(f"Generated Date: {datetime.now().strftime('%d %B, %Y')}", subtitle_style))
     story.append(Spacer(1, 20))
     
-    # Table Setup
     table_data = [['Rank', 'Student Name', 'Mobile Number', 'Percentage', 'Grade']] + ranked_students
     t = Table(table_data, colWidths=[50, 180, 120, 100, 80])
     t.setStyle(TableStyle([
@@ -517,7 +555,6 @@ def export_ranking_pdf():
     ]))
     story.append(t)
     
-    # Footer Layout
     story.append(Spacer(1, 40))
     footer_style = ParagraphStyle('FooterStyle', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#94a3b8'), alignment=1)
     story.append(Paragraph("Generated By Tuition Management System", footer_style))
@@ -525,7 +562,7 @@ def export_ranking_pdf():
     doc.build(story)
     buffer.seek(0)
     
-    return send_file(buffer, as_attachment=True, download_name=f"Ranking_Class_{selected_class}.pdf", mime_type='application/pdf')
+    return send_file(buffer, as_attachment=True, download_name=f"Ranking_Class_{selected_class}.pdf", mimetype='application/pdf')
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -542,12 +579,14 @@ def settings():
                 flash('Tuition Name cannot be empty.', 'danger')
                 return redirect(url_for('settings'))
                 
-            filename = conn.execute('SELECT tuition_logo FROM settings LIMIT 1').fetchone()['tuition_logo']
-            if logo_file and logo_file.filename != '':
-                filename = secure_filename(f"logo_{int(datetime.now().timestamp())}_{logo_file.filename}")
-                logo_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            with conn.cursor(cursor_factory=DictCursor) as cur:
+                cur.execute('SELECT tuition_logo FROM settings LIMIT 1')
+                filename = cur.fetchone()['tuition_logo']
+                if logo_file and logo_file.filename != '':
+                    filename = secure_filename(f"logo_{int(datetime.now().timestamp())}_{logo_file.filename}")
+                    logo_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 
-            conn.execute('UPDATE settings SET tuition_name=?, tuition_logo=? WHERE id=1', (tuition_name, filename))
+                cur.execute('UPDATE settings SET tuition_name=%s, tuition_logo=%s WHERE id=1', (tuition_name, filename))
             conn.commit()
             flash('General settings updated successfully.', 'success')
             
@@ -556,24 +595,28 @@ def settings():
             new_password = request.form.get('new_password').strip()
             confirm_password = request.form.get('confirm_password').strip()
             
-            admin_data = conn.execute('SELECT * FROM admins WHERE username = ?', (session['admin_username'],)).fetchone()
-            
-            if not check_password_hash(admin_data['password'], current_password):
-                flash('Current password is incorrect.', 'danger')
-            elif new_password != confirm_password:
-                flash('New passwords do not match.', 'danger')
-            elif len(new_password) < 6:
-                flash('Password must be at least 6 characters long.', 'danger')
-            else:
-                hashed_pw = generate_password_hash(new_password)
-                conn.execute('UPDATE admins SET password=? WHERE username=?', (hashed_pw, session['admin_username']))
-                conn.commit()
-                flash('Password changed successfully!', 'success')
+            with conn.cursor(cursor_factory=DictCursor) as cur:
+                cur.execute('SELECT * FROM admins WHERE username = %s', (session['admin_username'],))
+                admin_data = cur.fetchone()
+                
+                if not check_password_hash(admin_data['password'], current_password):
+                    flash('Current password is incorrect.', 'danger')
+                elif new_password != confirm_password:
+                    flash('New passwords do not match.', 'danger')
+                elif len(new_password) < 6:
+                    flash('Password must be at least 6 characters long.', 'danger')
+                else:
+                    hashed_pw = generate_password_hash(new_password)
+                    cur.execute('UPDATE admins SET password=%s WHERE username=%s', (hashed_pw, session['admin_username']))
+            conn.commit()
+            flash('Password changed successfully!', 'success')
                 
         conn.close()
         return redirect(url_for('settings'))
         
-    settings_data = conn.execute('SELECT * FROM settings LIMIT 1').fetchone()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute('SELECT * FROM settings LIMIT 1')
+        settings_data = cur.fetchone()
     conn.close()
     return render_template('settings.html', settings_data=settings_data)
 
