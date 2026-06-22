@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="mb-4">
+    <h2 class="fw-bold">Classwise Merit Rankings</h2>
+    <p class="text-muted">Generate competitive performance scores arranged automatically based on average score evaluation benchmarks.</p>
+</div>
+
+<div class="glass-card p-4 mb-4">
+    <form method="GET" action="{{ url_for('ranking') }}" class="row g-3 align-items-end">
+        <div class="col-12 col-md-8">
+            <label class="form-label fw-semibold">Select Targeting Class Group Batch</label>
+            <select name="class_select" class="form-select custom-select-style" required>
+                <option value="" disabled selected>-- Choose batch class criteria --</option>
+                {% for c in classes %}
+                <option value="{{ c.class }}" {% if selected_class == c.class %}selected{% endif %}>Class {{ c.class }} Batch Matrix</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-12 col-md-4 d-flex gap-2">
+            <button type="submit" class="btn btn-primary w-100 py-2"><i class="fa-solid fa-bolt me-2"></i>Compile List</button>
+            {% if selected_class and ranked_students %}
+            <a href="{{ url_for('export_ranking_pdf', class_select=selected_class) }}" class="btn btn-success w-100 py-2"><i class="fa-solid fa-file-pdf me-2"></i>Download PDF</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+{% if selected_class %}
+<div class="glass-card p-4 animate-fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="fw-bold m-0 text-white">Merit Analytics Hierarchy: Class {{ selected_class }}</h4>
+        <span class="badge bg-success-soft text-success px-3 py-2 fw-semibold">Rankings Compiled Successfully</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table custom-table border-0 vertical-align-middle">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Rank Pos</th>
+                    <th>Student Identity name</th>
+                    <th>Mobile Reference Line</th>
+                    <th>Aggregated Percentages</th>
+                    <th>Equivalent Grade</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in ranked_students %}
+                <tr class="{% if student.rank == 1 %}top-tier-gold-row{% endif %}">
+                    <td>
+                        {% if student.rank == 1 %}
+                        <span class="rank-badge rank-gold"><i class="fa-solid fa-trophy me-1"></i>1</span>
+                        {% elif student.rank == 2 %}
+                        <span class="rank-badge rank-silver">2</span>
+                        {% elif student.rank == 3 %}
+                        <span class="rank-badge rank-bronze">3</span>
+                        {% else %}
+                        <span class="rank-normal-text px-2">{{ student.rank }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="fw-bold text-white">{{ student.name }}</td>
+                    <td>{{ student.mobile }}</td>
+                    <td class="text-success fw-black">{{ student.percentage }}%</td>
+                    <td><span class="badge bg-dark border border-light-subtle fw-semibold">{{ student.grade }}</span></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center py-5 text-muted">No students in this class have assigned exam profiles to build rankings metrics.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

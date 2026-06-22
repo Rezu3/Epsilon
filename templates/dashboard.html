@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold m-0">System Overview</h2>
+        <p class="text-muted m-0">Track analytics and system updates instantly.</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-md-4">
+        <div class="glass-card stat-card">
+            <div class="stat-icon bg-primary-soft text-primary">
+                <i class="fa-solid fa-users"></i>
+            </div>
+            <div>
+                <h3 class="fw-black mb-0">{{ total_students }}</h3>
+                <span class="text-muted text-sm">Total Registered Students</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="glass-card stat-card">
+            <div class="stat-icon bg-success-soft text-success">
+                <i class="fa-solid fa-layer-group"></i>
+            </div>
+            <div>
+                <h3 class="fw-black mb-0">{{ total_classes }}</h3>
+                <span class="text-muted text-sm">Active Classes / Batches</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="glass-card stat-card">
+            <div class="stat-icon bg-info-soft text-info">
+                <i class="fa-solid fa-receipt"></i>
+            </div>
+            <div>
+                <h3 class="fw-black mb-0">{{ total_results }}</h3>
+                <span class="text-muted text-sm">Evaluated Exam Results</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-xl-7">
+        <div class="glass-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold m-0"><i class="fa-solid fa-crown text-warning me-2"></i>Overall Top Performers</h5>
+                <a href="{{ url_for('ranking') }}" class="btn btn-sm btn-outline-light">View Full Rankings</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table custom-table">
+                    <thead>
+                        <tr>
+                            <th>Student Name</th>
+                            <th>Class</th>
+                            <th>Avg Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ranker in top_rankers %}
+                        <tr>
+                            <td class="fw-bold text-white">{{ ranker.name }}</td>
+                            <td><span class="badge bg-secondary-soft text-secondary">{{ ranker.class }}</span></td>
+                            <td class="text-success fw-bold">{{ ranker.avg_pct }}%</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted py-3">No result evaluations found yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <div class="glass-card p-4 h-100">
+            <h5 class="fw-bold mb-3"><i class="fa-solid fa-clock text-info me-2"></i>Recently Added</h5>
+            <div class="recent-list">
+                {% for student in recent_students %}
+                <div class="recent-item d-flex align-items-center justify-content-between p-2 mb-2 rounded border border-light-subtle">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="avatar-sm bg-dark rounded-circle d-flex align-items-center justify-content-center text-primary font-weight-bold">
+                            {{ student.name[0] | upper }}
+                        </div>
+                        <div>
+                            <h6 class="m-0 fw-semibold text-white-50">{{ student.name }}</h6>
+                            <small class="text-muted">Class: {{ student.class }}</small>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('student_profile', id=student.id) }}" class="btn btn-icon btn-sm btn-dark"><i class="fa-solid fa-chevron-right"></i></a>
+                </div>
+                {% else %}
+                <p class="text-center text-muted py-4 m-0">No students available.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

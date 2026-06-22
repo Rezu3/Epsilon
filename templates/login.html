@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block login_content %}
+<div class="login-wrapper">
+    <div class="glass-login-card animate-fade-in">
+        <div class="login-header text-center mb-4">
+            <i class="fa-solid fa-shield-halved login-icon-banner"></i>
+            <h2>Secure Admin Login</h2>
+            <p class="text-muted">Tuition Management System Portal</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} fade show py-2 small" role="alert">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('login') }}" method="POST">
+            <div class="mb-3">
+                <label class="form-label text-secondary small">Username</label>
+                <div class="input-group-custom">
+                    <i class="fa-solid fa-user"></i>
+                    <input type="text" name="username" class="form-control" placeholder="Enter username" required autocomplete="off">
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label text-secondary small">Password</label>
+                <div class="input-group-custom">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-gradient w-100 py-2.5 fw-bold">Sign In to Dashboard</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

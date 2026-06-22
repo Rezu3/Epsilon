@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="mb-4">
+    <h2 class="fw-bold">Control & System Settings</h2>
+    <p class="text-muted">Manage institution presentation metrics and administrative security details.</p>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-md-6">
+        <div class="glass-card p-4 h-100">
+            <h5 class="fw-bold text-primary mb-4"><i class="fa-solid fa-sliders me-2"></i>General Branding Settings</h5>
+            <form action="{{ url_for('settings') }}" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="form_type" value="general">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Tuition Academy Platform Name</label>
+                    <input type="text" name="tuition_name" class="form-control custom-input" value="{{ system_settings.tuition_name }}" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Tuition Brand Logo Icon Image</label>
+                    <input type="file" name="tuition_logo" class="form-control custom-input" accept="image/*">
+                    <div class="form-text text-muted small mt-2">Recommended sizing footprint: Transparent Square Aspect ratios.</div>
+                </div>
+                <button type="submit" class="btn btn-primary py-2 px-4 fw-medium">Save Branding Configuration</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6">
+        <div class="glass-card p-4 h-100">
+            <h5 class="fw-bold text-warning mb-4"><i class="fa-solid fa-user-lock me-2"></i>Update Secure Password Pass</h5>
+            <form action="{{ url_for('settings') }}" method="POST">
+                <input type="hidden" name="form_type" value="password">
+                <div class="mb-3">
+                    <label class="form-label small">Current Secret Password</label>
+                    <input type="password" name="current_password" class="form-control custom-input" placeholder="••••••••" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small">New Complex Password</label>
+                    <input type="password" name="new_password" class="form-control custom-input" placeholder="Min 6 characters long" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label small">Confirm New Password</label>
+                    <input type="password" name="confirm_password" class="form-control custom-input" placeholder="Retype target new pass string" required>
+                </div>
+                <button type="submit" class="btn btn-warning py-2 px-4 fw-medium text-dark">Change Access Key</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

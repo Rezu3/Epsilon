@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam Management</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/exams.css') }}">
+</head>
+<body>
+
+<div class="container">
+
+    <div class="top-bar">
+        <h1>📝 Exam Management</h1>
+
+        <a href="{{ url_for('dashboard') }}" class="back-btn">
+            ← Dashboard
+        </a>
+    </div>
+
+    <!-- Add Exam -->
+
+    <div class="exam-card">
+
+        <h2>Create New Exam</h2>
+
+        <form action="/add_exam" method="POST">
+
+            <input type="text"
+                   name="exam_name"
+                   placeholder="Exam Name"
+                   required>
+
+            <input type="text"
+                   name="subject"
+                   placeholder="Subject"
+                   required>
+
+            <input type="number"
+                   name="full_marks"
+                   placeholder="Full Marks"
+                   required>
+
+            <button type="submit">
+                Create Exam
+            </button>
+
+        </form>
+
+    </div>
+
+    <!-- Exam List -->
+
+    <div class="table-card">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Exam Name</th>
+                    <th>Subject</th>
+                    <th>Full Marks</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+            {% for exam in exams %}
+
+            <tr>
+                <td>{{ exam.id }}</td>
+                <td>{{ exam.exam_name }}</td>
+                <td>{{ exam.subject }}</td>
+                <td>{{ exam.full_marks }}</td>
+
+                <td>
+                    <a href="/delete_exam/{{ exam.id }}"
+                       class="delete-btn"
+                       onclick="return confirm('Delete Exam?')">
+                       Delete
+                    </a>
+                </td>
+            </tr>
+
+            {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/exams.js') }}"></script>
+
+</body>
+</html>

@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('students') }}" class="btn btn-sm btn-dark mb-2"><i class="fa-solid fa-arrow-left me-2"></i>Back to Directory</a>
+    <h2 class="fw-bold">{% if edit_mode %}Modify Profile Data{% else %}Student Detailed Profile{% endif %}</h2>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-lg-4">
+        <div class="glass-card text-center p-4">
+            <div class="profile-avatar-container mb-3">
+                {% if student.photo %}
+                <img src="{{ url_for('static', filename='uploads/' + student.photo) }}" class="img-thumbnail rounded-circle main-profile-img" alt="">
+                {% else %}
+                <div class="main-profile-img rounded-circle bg-dark border border-secondary d-flex align-items-center justify-content-center text-primary display-4 font-weight-bold mx-auto mb-3">{{ student.name[0] | upper }}</div>
+                {% endif %}
+            </div>
+            <h4 class="fw-bold text-white mb-1">{{ student.name }}</h4>
+            <span class="badge bg-primary-soft text-primary fs-6 py-2 px-3 mb-2">{{ student.student_id }}</span>
+            <p class="text-muted text-sm m-0">Enrolled: {{ student.admission_date or 'N/A' }}</p>
+
+            {% if not edit_mode %}
+            <hr class="border-light-subtle my-3">
+            <form action="{{ url_for('delete_student', id=student.id) }}" method="POST" onsubmit="return confirm('CRITICAL WARNING: Are you sure you want to permanently delete this student record? This action will drop all their related performance results records too!');">
+                <button type="submit" class="btn btn-sm btn-outline-danger w-100"><i class="fa-solid fa-trash me-2"></i>Delete Student Record</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+        <div class="glass-card p-4">
+            {% if edit_mode %}
+            <form action="{{ url_for('edit_student', id=student.id) }}" method="POST" enctype="multipart/form-data">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label required-field">Student Name</label>
+                        <input type="text" name="name" class="form-control custom-input" value="{{ student.name }}" required>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label required-field">Mobile Number</label>
+                        <input type="text" name="mobile" class="form-control custom-input" value="{{ student.mobile }}" required>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Father's Name</label>
+                        <input type="text" name="father_name" class="form-control custom-input" value="{{ student.father_name }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Mother's Name</label>
+                        <input type="text" name="mother_name" class="form-control custom-input" value="{{ student.mother_name }}">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Class</label>
+                        <input type="text" name="class" class="form-control custom-input" value="{{ student.class }}">
+                    </div>
+                    <div class="col-12 col-md-8">
+                        <label class="form-label">School Name</label>
+                        <input type="text" name="school_name" class="form-control custom-input" value="{{ student.school_name }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Date of Birth</label>
+                        <input type="date" name="dob" class="form-control custom-input" value="{{ student.dob }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Admission Date</label>
+                        <input type="date" name="admission_date" class="form-control custom-input" value="{{ student.admission_date }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Address</label>
+                        <textarea name="address" rows="2" class="form-control custom-input">{{ student.address }}</textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Update Photo (Optional)</label>
+                        <input type="file" name="photo" class="form-control custom-input" accept="image/*">
+                    </div>
+                </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-gradient">Save Profile Details</button>
+                    <a href="{{ url_for('student_profile', id=student.id) }}" class="btn btn-outline-secondary">Discard Changes</a>
+                </div>
+            </form>
+            {% else %}
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold m-0 text-primary">Academic & Personal Metadata</h5>
+                <a href="{{ url_for('edit_student', id=student.id) }}" class="btn btn-sm btn-primary"><i class="fa-solid fa-user-pen me-2"></i>Edit Profile</a>
+            </div>
+            
+            <div class="row g-3 profile-meta-display">
+                <div class="col-12 col-md-6"><strong>Class / Group Batch:</strong> <span class="text-white-50">{{ student.class or 'Not Assigned' }}</span></div>
+                <div class="col-12 col-md-6"><strong>Mobile Line:</strong> <span class="text-white-50">{{ student.mobile }}</span></div>
+                <div class="col-12 col-md-6"><strong>Father's Guardian Name:</strong> <span class="text-white-50">{{ student.father_name or 'N/A' }}</span></div>
+                <div class="col-12 col-md-6"><strong>Mother's Name:</strong> <span class="text-white-50">{{ student.mother_name or 'N/A' }}</span></div>
+                <div class="col-12 col-md-6"><strong>Registered Institution:</strong> <span class="text-white-50">{{ student.school_name or 'N/A' }}</span></div>
+                <div class="col-12 col-md-6"><strong>Date of Birth:</strong> <span class="text-white-50">{{ student.dob or 'N/A' }}</span></div>
+                <div class="col-12"><strong>Mailing Address:</strong> <p class="text-white-50 mb-0 mt-1">{{ student.address or 'No recorded permanent address.' }}</p></div>
+            </div>
+
+            <h5 class="fw-bold mt-5 mb-3 text-success">Personal Examination Records</h5>
+            <div class="table-responsive">
+                <table class="table custom-table">
+                    <thead>
+                        <tr>
+                            <th>Exam Module Name</th>
+                            <th>Marks Grid</th>
+                            <th>Percentage</th>
+                            <th>Calculated Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for res in results %}
+                        <tr>
+                            <td class="fw-semibold text-white">{{ res.exam_name }}</td>
+                            <td>{{ res.obtained_marks | int }} / {{ res.total_marks | int }}</td>
+                            <td>{{ res.percentage }}%</td>
+                            <td><span class="badge {% if res.grade == 'F' %}bg-danger{% else %}bg-success-soft text-success{% endif %}">{{ res.grade }}</span></td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-3 text-muted text-sm">No exam marksheet found for this specific profile.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
