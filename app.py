@@ -444,25 +444,26 @@ def delete_result(id):
 @login_required
 def ranking():
     conn = get_db()
-    with conn.cursor(cursor_factory=DictCursor) as cur:
-        cur.execute('SELECT DISTINCT class FROM students WHERE class IS NOT NULL AND class != %s ORDER BY class', ('',))
-        classes = cur.fetchall()
+    classes = conn.execute('SELECT DISTINCT class FROM students WHERE class IS NOT NULL AND class != "" ORDER BY class').fetchall()
+    
+    # নতুন: ডাটাবেস থেকে সব পরীক্ষার নাম নিয়ে আসা ড্রপডাউনের জন্য
+    exams = conn.execute('SELECT DISTINCT exam_name FROM results ORDER BY exam_name').fetchall()
     
     selected_class = request.args.get('class_select', '').strip()
+    selected_exam = request.args.get('exam_select', '').strip() # নতুন ফিল্টার
     ranked_students = []
     
-    if selected_class:
+    # এখন ক্লাস এবং এক্সাম দুটোই সিলেক্ট থাকতে হবে
+    if selected_class and selected_exam:
+        # কুয়েরি পরিবর্তন: নির্দিষ্ট ক্লাসের এবং নির্দিষ্ট পরীক্ষার নম্বর ফিল্টার করা হয়েছে
         query = '''
-            SELECT s.id, s.name, s.mobile, ROUND(AVG(r.percentage)::numeric, 2) as avg_percentage
+            SELECT s.id, s.name, s.mobile, r.percentage as exam_percentage
             FROM students s
             JOIN results r ON s.id = r.student_id
-            WHERE s.class = %s
-            GROUP BY s.id, s.name, s.mobile
-            ORDER BY avg_percentage DESC
+            WHERE s.class = ? AND r.exam_name = ?
+            ORDER BY exam_percentage DESC
         '''
-        with conn.cursor(cursor_factory=DictCursor) as cur:
-            cur.execute(query, (selected_class,))
-            raw_rankings = cur.fetchall()
+        raw_rankings = conn.execute(query, (selected_class, selected_exam)).fetchall()
         
         current_rank = 0
         prev_pct = None
@@ -470,46 +471,49 @@ def ranking():
         
         for row in raw_rankings:
             count += 1
-            if row['avg_percentage'] != prev_pct:
+            if row['exam_percentage'] != prev_pct:
                 current_rank = count
-                prev_pct = row['avg_percentage']
+                prev_pct = row['exam_percentage']
             
-            _, grade = calculate_grade(row['avg_percentage'], 100)
+            _, grade = calculate_grade(row['exam_percentage'], 100)
             
             ranked_students.append({
                 'rank': current_rank,
                 'name': row['name'],
                 'mobile': row['mobile'],
-                'percentage': row['avg_percentage'],
+                'percentage': row['exam_percentage'],
                 'grade': grade
             })
             
     conn.close()
-    return render_template('ranking.html', classes=classes, selected_class=selected_class, ranked_students=ranked_students)
+    # templates এ exams এবং selected_exam পাঠানো হচ্ছে
+    return render_template('ranking.html', classes=classes, exams=exams, 
+                           selected_class=selected_class, selected_exam=selected_exam, 
+                           ranked_students=ranked_students)
+
 
 @app.route('/ranking/export/pdf')
 @login_required
 def export_ranking_pdf():
     selected_class = request.args.get('class_select', '').strip()
-    if not selected_class:
-        flash('Please select a class to export PDF.', 'danger')
+    selected_exam = request.args.get('exam_select', '').strip() # নতুন ফিল্টার
+    
+    if not selected_class or not selected_exam:
+        flash('Please select both Class and Exam to export PDF.', 'danger')
         return redirect(url_for('ranking'))
         
     conn = get_db()
-    with conn.cursor(cursor_factory=DictCursor) as cur:
-        cur.execute('SELECT * FROM settings LIMIT 1')
-        system_set = cur.fetchone()
-        
-        query = '''
-            SELECT s.name, s.mobile, ROUND(AVG(r.percentage)::numeric, 2) as avg_percentage
-            FROM students s
-            JOIN results r ON s.id = r.student_id
-            WHERE s.class = %s
-            GROUP BY s.id, s.name, s.mobile
-            ORDER BY avg_percentage DESC
-        '''
-        cur.execute(query, (selected_class,))
-        raw_rankings = cur.fetchall()
+    system_set = conn.execute('SELECT * FROM settings LIMIT 1').fetchone()
+    
+    # PDF এর জন্য কুয়েরি আপডেট
+    query = '''
+        SELECT s.name, s.mobile, r.percentage as exam_percentage
+        FROM students s
+        JOIN results r ON s.id = r.student_id
+        WHERE s.class = ? AND r.exam_name = ?
+        ORDER BY exam_percentage DESC
+    '''
+    raw_rankings = conn.execute(query, (selected_class, selected_exam)).fetchall()
     conn.close()
     
     ranked_students = []
@@ -518,11 +522,11 @@ def export_ranking_pdf():
     count = 0
     for row in raw_rankings:
         count += 1
-        if row['avg_percentage'] != prev_pct:
+        if row['exam_percentage'] != prev_pct:
             current_rank = count
-            prev_pct = row['avg_percentage']
-        _, grade = calculate_grade(row['avg_percentage'], 100)
-        ranked_students.append([current_rank, row['name'], row['mobile'], f"{row['avg_percentage']}%", grade])
+            prev_pct = row['exam_percentage']
+        _, grade = calculate_grade(row['exam_percentage'], 100)
+        ranked_students.append([current_rank, row['name'], row['mobile'], f"{row['exam_percentage']}%", grade])
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
@@ -534,7 +538,8 @@ def export_ranking_pdf():
     
     story.append(Paragraph(f"<b>{system_set['tuition_name']}</b>", title_style))
     story.append(Spacer(1, 6))
-    story.append(Paragraph(f"Merit List / Ranking Report — Class: {selected_class}", subtitle_style))
+    # PDF এর হেডারে পরীক্ষার নাম যোগ করা হয়েছে
+    story.append(Paragraph(f"Merit List / Ranking Report — Class: {selected_class} | Exam: {selected_exam}", subtitle_style))
     story.append(Paragraph(f"Generated Date: {datetime.now().strftime('%d %B, %Y')}", subtitle_style))
     story.append(Spacer(1, 20))
     
@@ -562,8 +567,8 @@ def export_ranking_pdf():
     doc.build(story)
     buffer.seek(0)
     
-    return send_file(buffer, as_attachment=True, download_name=f"Ranking_Class_{selected_class}.pdf", mimetype='application/pdf')
-
+    # ডাউনলোড ফাইলের নামেও পরীক্ষার নাম থাকবে
+    return send_file(buffer, as_attachment=True, download_name=f"Ranking_Class_{selected_class}_{selected_exam}.pdf", mime_type='application/pdf')
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
