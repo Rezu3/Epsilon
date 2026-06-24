@@ -578,8 +578,7 @@ def export_ranking_pdf():
     buffer.seek(0)
     
     # mimetype সংশোধিত (ডাউনলোড এরর আটকানোর জন্য)
-    return send_file(buffer, as_attachment=True, download_name=f"Ranking_Class_{selected_class}_{selected_exam}.pdf", download_name_or_file=None, mimetype='application/pdf')
-
+    return send_file(buffer, as_attachment=True, download_name=f"Ranking_Class_{selected_class}_{selected_exam}.pdf", mimetype='application/pdf')
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
